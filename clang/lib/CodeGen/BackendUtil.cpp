@@ -81,6 +81,7 @@
 #include "llvm/Transforms/Instrumentation/SanitizerBinaryMetadata.h"
 #include "llvm/Transforms/Instrumentation/SanitizerCoverage.h"
 #include "llvm/Transforms/Instrumentation/ThreadSanitizer.h"
+#include "llvm/Transforms/chipStar/HipPasses.h"
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
 #include "llvm/Transforms/Scalar/GVN.h"
@@ -1036,6 +1037,8 @@ void EmitAssemblyHelper::RunOptimizationPipeline(
     } else {
       MPM.addPass(PB.buildPerModuleDefaultPipeline(Level));
     }
+
+    MPM.addPass(HIPPassesPass());
   }
 
   // Link against bitcodes supplied via the -mlink-builtin-bitcode option

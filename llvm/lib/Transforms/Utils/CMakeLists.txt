@@ -87,6 +87,13 @@ add_llvm_component_library(LLVMTransformUtils
   ValueMapper.cpp
   VNCoercion.cpp
 
+  chipStar/HipPasses.cpp
+chipStar/HipDynMem.cpp chipStar/HipStripUsedIntrinsics.cpp chipStar/HipDefrost.cpp
+chipStar/HipPrintf.cpp chipStar/HipGlobalVariables.cpp chipStar/HipTextureLowering.cpp chipStar/HipAbort.cpp
+chipStar/HipEmitLoweredNames.cpp chipStar/HipWarps.cpp chipStar/HipKernelArgSpiller.cpp
+chipStar/HipLowerZeroLengthArrays.cpp chipStar/HipSanityChecks.cpp chipStar/HipLowerSwitch.cpp
+chipStar/HipLowerMemset.cpp chipStar/HipIGBADetector.cpp chipStar/SPIRVImageType.cc
+
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms/Utils
@@ -100,3 +107,4 @@ add_llvm_component_library(LLVMTransformUtils
   Support
   TargetParser
   )
+

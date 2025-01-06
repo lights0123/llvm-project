@@ -236,19 +236,19 @@ HipPrintfToOpenCLPrintfPass::getOrCreateStrLiteralArg(const std::string &Str,
 
   if (B.getContext().supportsTypedPointers()) {
 #endif
-    GlobalVariable *LiteralStr = B.CreateGlobalString(Str.c_str(), ".cl_printf_fmt_str",
-                                            SPIRV_OPENCL_PRINTF_FMT_ARG_AS);
+    GlobalVariable *LiteralStr = B.CreateGlobalString(
+        Str.c_str(), ".cl_printf_fmt_str", SPIRV_OPENCL_PRINTF_FMT_ARG_AS);
 
     IntegerType *Int64Ty = Type::getInt64Ty(M_->getContext());
     ConstantInt *Zero = ConstantInt::get(Int64Ty, 0);
     std::array<Constant *, 2> Indices = {Zero, Zero};
 
     LiteralArg = llvm::ConstantExpr::getGetElementPtr(
-               LiteralStr->getValueType(), LiteralStr, Indices);
+        LiteralStr->getValueType(), LiteralStr, Indices);
 #if LLVM_VERSION_MAJOR >= 15
   } else {
     LiteralArg = B.CreateGlobalString(Str.c_str(), ".cl_printf_fmt_str",
-                              SPIRV_OPENCL_PRINTF_FMT_ARG_AS);
+                                      SPIRV_OPENCL_PRINTF_FMT_ARG_AS);
   }
 #endif
 

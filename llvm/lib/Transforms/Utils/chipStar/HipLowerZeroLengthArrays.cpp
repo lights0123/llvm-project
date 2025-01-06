@@ -43,10 +43,10 @@ static Type* getLoweredTypeOrNull(Type *Ty) {
 #endif
 
   // SPIRV-LLVM translator does not accept zero length arrays. Lower such
-  // arrays to some arbitrary non-zero length.
+  // arrays to its element type
   if (auto *ATy = dyn_cast<ArrayType>(Ty))
     if (ATy->getNumElements() == 0)
-      return ArrayType::get(ATy->getElementType(), 1);
+      return ATy->getElementType();
 
   return nullptr;
 }
@@ -68,16 +68,37 @@ static Constant *getLoweredConstantOrNull(Constant *C) {
       auto *NewSrcTy = getLoweredTypeOrNull(GEP->getSourceElementType());
       auto *OrigPtr = cast<Constant>(GEP->getPointerOperand());
       auto *NewPtr = getLoweredConstantOrNull(OrigPtr);
+
+      // If we don't need to change the source element type and also
+      // don't need to change the pointer then there is nothing to do
       if (!NewSrcTy && !NewPtr)
         return nullptr;
-      SmallVector<Value *> NewIndices;
-      for (auto I = GEP->idx_begin(), E = GEP->idx_end(); I != E; I++)
-        NewIndices.push_back(*I);
 
-      auto *NewGEP = ConstantExpr::getGetElementPtr(
-          (NewSrcTy ? NewSrcTy : GEP->getSourceElementType()),
-          (NewPtr ? NewPtr : OrigPtr), NewIndices, GEP->isInBounds());
-      return NewGEP;
+      // If we change the source element type then we must drop
+      // the first index as it is no longer needed
+      SmallVector<Constant*, 4> NewIndices;
+      if (!NewSrcTy) {
+        for (auto I = GEP->idx_begin(), E = GEP->idx_end(); I != E; I++)
+          NewIndices.push_back(cast<Constant>(*I));
+      } else {
+        // Skip the first index
+        for (auto I = GEP->idx_begin() + 1, E = GEP->idx_end(); I != E; I++)
+          NewIndices.push_back(cast<Constant>(*I));
+      }
+
+      // If we don't have any indices left and we are not changing
+      // the pointer then we just need a bitcast. Otherwise, we need
+      // a GEP
+      if (NewIndices.empty() && !NewPtr) {
+          return ConstantExpr::getBitCast(OrigPtr,
+              GEP->getType());
+      } else if (NewIndices.empty()) {
+        return ConstantExpr::getBitCast(NewPtr, GEP->getType());
+      } else {
+        return ConstantExpr::getGetElementPtr(
+            (NewSrcTy ? NewSrcTy : GEP->getSourceElementType()),
+            (NewPtr ? NewPtr : OrigPtr), NewIndices, GEP->isInBounds());
+      }
 
     } else if (isa<AddrSpaceCastOperator>(CE) || isa<BitCastOperator>(CE) ||
                CE->getOpcode() == Instruction::IntToPtr) {
@@ -143,18 +164,44 @@ static bool lowerZeroLengthArrayTypes(Function &F) {
     for (auto &I : BB) {
       if (auto *GEP = dyn_cast<GetElementPtrInst>(&I)) {
         auto *NewSrcTy = getLoweredTypeOrNull(GEP->getSourceElementType());
-        if (!NewSrcTy)
-          continue;
         auto *NewPtr = getLoweredValue(GEP->getPointerOperand());
-        SmallVector<Value *> NewIndices;
-        for (auto I = GEP->idx_begin(), E = GEP->idx_end(); I != E; I++)
-          NewIndices.push_back(*I);
-        GetElementPtrInst *NewGEP =
-            GetElementPtrInst::Create(NewSrcTy, NewPtr, NewIndices, "", GEP);
+        bool InBounds = GEP->isInBounds();
+
+        // If we don't need to change the source element type and also
+        // don't need to change the pointer then there is nothing to do
+        if (!NewSrcTy && NewPtr == GEP->getPointerOperand())
+          continue;
+
+        // If we change the source element type then we must drop
+        // the first index as it is no longer needed
+        SmallVector<Value*, 4> NewIndices;
+        if (!NewSrcTy) {
+          for (auto I = GEP->idx_begin(), E = GEP->idx_end(); I != E; I++)
+            NewIndices.push_back(*I);
+        } else {
+          // Skip the first index
+          for (auto I = GEP->idx_begin() + 1, E = GEP->idx_end(); I != E; I++)
+            NewIndices.push_back(*I);
+        }
+
+        // If we don't have any indices left and we are not changing
+        // the pointer then we just need a bitcast. Otherwise, we need
+        // a GEP
+        Instruction *NewInst;
+        if (NewIndices.empty() && NewPtr == GEP->getPointerOperand()) {
+          NewInst = new BitCastInst(GEP->getPointerOperand(), GEP->getType(),
+                                    "", GEP);
+        } else if (NewIndices.empty()) {
+          NewInst = new BitCastInst(NewPtr, GEP->getType(), "", GEP);
+        } else {
+          NewInst =
+              GetElementPtrInst::Create(NewSrcTy, NewPtr, NewIndices, "", GEP);
+          cast<GetElementPtrInst>(NewInst)->setIsInBounds(InBounds);
+        }
         if (hasUnsupportedType(GEP->getType()))
-          recordLoweredValue(GEP, NewGEP);
+          recordLoweredValue(GEP, NewInst);
         else
-          GEP->replaceAllUsesWith(NewGEP);
+          GEP->replaceAllUsesWith(NewInst);
         InstsToDelete.push_back(GEP);
         Modified |= true;
       } else {

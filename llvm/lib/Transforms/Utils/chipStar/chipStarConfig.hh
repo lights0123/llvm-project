@@ -1,0 +1,1 @@
+#define CHIP_DEFAULT_WARP_SIZE 32

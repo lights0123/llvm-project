@@ -14,6 +14,8 @@
 // (c) 2024 Henry Linjamäki / Intel
 //===----------------------------------------------------------------------===//
 
+#include "llvm/Transforms/chipStar/HipPasses.h"
+
 #include "HipAbort.h"
 #include "HipDefrost.h"
 #include "HipDynMem.h"
@@ -41,6 +43,9 @@
 #include "llvm/Transforms/IPO/Internalize.h"
 
 using namespace llvm;
+
+static cl::opt<bool> enableOpt("chipstar", cl::init(false),
+                         cl::desc("Enable the chipStar pass"));
 
 // A predicate for internalize pass
 //
@@ -143,7 +148,7 @@ static void addFullLinkTimePasses(ModulePassManager &MPM) {
   MPM.addPass(HipWarpsPass());
 
   // This pass must be last one that modifies kernel parameter list.
-  MPM.addPass(HipKernelArgSpillerPass());
+  // MPM.addPass(HipKernelArgSpillerPass());
 
   // Remove dead code left over by HIP lowering passes and kept alive by
   // llvm.used and llvm.compiler.used intrinsic variable.
@@ -158,27 +163,46 @@ static void addFullLinkTimePasses(ModulePassManager &MPM) {
   MPM.addPass(createModuleToFunctionPassAdaptor(InferAddressSpacesPass(4)));
   MPM.addPass(HipFixOpenCLMDPass());
 
-  MPM.addPass(HipIGBADetectorPass());
+  // MPM.addPass(HipIGBADetectorPass());
 }
 
-#if LLVM_VERSION_MAJOR < 14
-#define PASS_ID "hip-link-time-passes"
-#else
-#define PASS_ID "hip-post-link-passes"
-#endif
-
-extern "C" ::llvm::PassPluginLibraryInfo LLVM_ATTRIBUTE_WEAK
-llvmGetPassPluginInfo() {
-  return {LLVM_PLUGIN_API_VERSION, "hip-passes", LLVM_VERSION_STRING,
-          [](PassBuilder &PB) {
-            PB.registerPipelineParsingCallback(
-                [](StringRef Name, ModulePassManager &MPM,
-                   ArrayRef<PassBuilder::PipelineElement>) {
-                  if (Name == PASS_ID) {
-                    addFullLinkTimePasses(MPM);
-                    return true;
-                  }
-                  return false;
-                });
-          }};
+PreservedAnalyses HIPPassesPass::run(Module &M, ModuleAnalysisManager &AM) {
+  ModulePassManager MPM;
+  if (enableOpt) {
+    addFullLinkTimePasses(MPM);
+  }
+  return MPM.run(M, AM);
 }
+
+// Add new pass creation function
+// std::unique_ptr<Pass> createHIPPassesPass() {
+//   return std::make_unique<HIPPassesPass>();
+// }
+
+// // Register passes
+// void initializeHIPPasses(PassRegistry &Registry) {
+//   initializeHIPPassesPassPass(Registry);
+//   // Add other pass initializations if needed
+// }
+
+// #if LLVM_VERSION_MAJOR < 14
+// #define PASS_ID "hip-link-time-passes"
+// #else
+// #define PASS_ID "hip-post-link-passes"
+// #endif
+
+// extern "C" ::llvm::PassPluginLibraryInfo LLVM_ATTRIBUTE_WEAK
+// llvmGetPassPluginInfo() {
+//   return {LLVM_PLUGIN_API_VERSION, "hip-passes", LLVM_VERSION_STRING,
+//           [](PassBuilder &PB) {
+//             PB.registerPipelineParsingCallback(
+//                 [](StringRef Name, ModulePassManager &MPM,
+//                    ArrayRef<PassBuilder::PipelineElement>) {
+//                   if (Name == PASS_ID) {
+//                     addFullLinkTimePasses(MPM);
+//                     return true;
+//                   }
+//                   return false;
+//                 });
+//           }};
+// }

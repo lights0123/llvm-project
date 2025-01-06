@@ -54,6 +54,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 
 #include <vector>
 #include <string>
@@ -292,6 +293,27 @@ static Function *getCalledFunction(CallInst *CI) {
 
 PreservedAnalyses HipPrintfToOpenCLPrintfPass::run(Module &Mod,
                                                    ModuleAnalysisManager &AM) {
+
+  auto *AssertFailF = Mod.getFunction("__assert_fail");
+  if (AssertFailF) {
+    std::vector<CallInst *> Calls;
+    for (User *U : AssertFailF->users()) {
+      if (CallInst *CI = dyn_cast<CallInst>(U)) {
+        Calls.push_back(CI);
+      }
+    }
+
+    // Process each call site
+    for (CallInst *CI : Calls) {
+      CallBase *cb = dyn_cast<CallBase>(CI);
+      if (cb->getParent() && cb->getFunction()) {
+        InlineFunctionInfo ifi;
+        llvm::InlineFunction(*cb, ifi);
+      }
+    }
+    if (AssertFailF->hasNUses(0))
+      AssertFailF->eraseFromParent();
+  }
 
   M_ = &Mod;
   LiteralArgs_.clear();
